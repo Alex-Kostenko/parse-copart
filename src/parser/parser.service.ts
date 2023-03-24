@@ -253,6 +253,7 @@ export class ParserService {
       imageGalary,
       images,
       autohelperbot,
+      autohelperbotChilds,
       vin,
       auctionFees,
       carCost,
@@ -281,27 +282,36 @@ export class ParserService {
     );
     car.images = imagesLinks;
 
-    await page.waitForSelector(vin);
+    await page.waitForSelector(autohelperbotChilds);
     const autohelperbotBlock = await page.$(autohelperbot);
-
-    //vin
-    car.vin = await autohelperbotBlock.$eval(vin, (element: HTMLElement) =>
-      element ? element.innerText : '',
+    const hasLoadingText = await autohelperbotBlock.$eval(
+      '.lot-details-inner',
+      (el: HTMLElement) => {
+        return el.textContent.includes('Loading data...');
+      },
     );
 
-    //auction_fees
-    const auctionFeesEL = await autohelperbotBlock.$eval(
-      auctionFees,
-      (element: HTMLElement) => (element ? element.innerText : ''),
-    );
+    if (!hasLoadingText) {
+      //vin
+      await autohelperbotBlock.waitForSelector(vin);
+      car.vin = await autohelperbotBlock.$eval(vin, (element: HTMLElement) =>
+        element ? element.innerText : '',
+      );
 
-    car.auction_fees = findPrice(auctionFeesEL);
+      //auction_fees
+      const auctionFeesEL = await autohelperbotBlock.$eval(
+        auctionFees,
+        (element: HTMLElement) => (element ? element.innerText : ''),
+      );
 
-    //car_cost
-    car.car_cost = await autohelperbotBlock.$eval(
-      carCost,
-      (element: HTMLInputElement) => (element ? element.value : ''),
-    );
+      car.auction_fees = findPrice(auctionFeesEL);
+
+      //car_cost
+      car.car_cost = await autohelperbotBlock.$eval(
+        carCost,
+        (element: HTMLInputElement) => (element ? element.value : ''),
+      );
+    }
 
     await page.waitForSelector(carColor);
     const lotInformation = await page.$(lotInformationBlock);
