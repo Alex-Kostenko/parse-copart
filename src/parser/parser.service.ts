@@ -235,6 +235,7 @@ export class ParserService {
           waitUntil: 'domcontentloaded',
         });
 
+        this.writeScriptDetails(page, cars[i].lot_id);
         console.log('Lot id: ', cars[i].lot_id);
         const start = Date.now();
         console.log('----script starts----');
@@ -251,7 +252,6 @@ export class ParserService {
     const {
       imageGalary,
       images,
-      fullImagePath,
       autohelperbot,
       vin,
       auctionFees,
@@ -264,7 +264,6 @@ export class ParserService {
       drive,
       secondaryDamage,
       notes,
-      noNotesText,
       key,
     } = COPART_SELECTORS.scrapeOneCar;
     // images
@@ -274,7 +273,7 @@ export class ParserService {
       images,
       (elements: HTMLImageElement[]) =>
         elements.map((el) => {
-          const fullUrl = el.getAttribute(fullImagePath);
+          const fullUrl = el.getAttribute('full-url');
           if (fullUrl !== null && fullUrl !== undefined) {
             return fullUrl;
           }
@@ -320,7 +319,9 @@ export class ParserService {
     //highlights
     const highlightsElement = await lotInformation.$x(highlightsXPath);
     car.highlights = highlightsElement.length
-      ? await highlightsElement[0].evaluate((el: HTMLElement) => el.innerText)
+      ? (
+          await highlightsElement[0].evaluate((el: HTMLElement) => el.innerText)
+        ).trim()
       : '';
 
     //transmission
@@ -342,7 +343,9 @@ export class ParserService {
 
     //notes
     car.notes = await lotInformation.$eval(notes, (element: HTMLElement) =>
-      !element || element.innerText === noNotesText ? '' : element.innerText,
+      !element || element.innerText === 'There are no Notes for this Lot'
+        ? ''
+        : element.innerText,
     );
 
     //key
@@ -355,5 +358,19 @@ export class ParserService {
     console.log(car);
 
     await this.carRepository.saveOne(car);
+  }
+
+  async writeScriptDetails(page: number, lot_url: string) {
+    const content = `Page: ${page}\nLot url: ${lot_url}`;
+    fs.writeFile(
+      './src/parser/parser-status',
+      content,
+      { flag: 'w+' },
+      (err: string) => {
+        if (err) {
+          console.error(err);
+        }
+      },
+    );
   }
 }

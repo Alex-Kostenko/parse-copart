@@ -42,7 +42,7 @@ export const COPART_SELECTORS = {
   fakeUserAgent:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36',
   autohelperbot: {
-    loadExtension: `--load-extension=./autoHelperBot/AutohelperBot`,
-    disableExtension: `--disable-extensions-except=./autoHelperBot/AutohelperBot`,
+    loadExtension: `--load-extension=./autoHelperBot`,
+    disableExtension: `--disable-extensions-except=./autoHelperBot`,
   },
 };

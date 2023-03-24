@@ -50,9 +50,9 @@ export class CarsRepository {
     const query = this.carEntity
       .createQueryBuilder('cars')
       .orderBy('cars.lot_id', 'ASC')
-      // .where('cars.sale_date IS NOT NULL')
-      // .andWhere(`cars.sale_date <> :futureDate`, { futureDate: 'Future' })
-      // .andWhere(`DATE(cars.sale_date) = DATE(NOW())`)
+      .where('cars.sale_date IS NOT NULL')
+      .andWhere(`cars.sale_date <> :futureDate`, { futureDate: 'Future' })
+      .andWhere(`DATE(cars.sale_date) = DATE(NOW())`)
       .take(pageSize)
       .skip((page - 1) * pageSize);
 
@@ -71,9 +71,9 @@ export class CarsRepository {
     const totalAmount = this.carEntity
       .createQueryBuilder('cars')
       .orderBy('cars.lot_id', 'ASC')
-      // .where('cars.sale_date IS NOT NULL')
-      // .andWhere(`cars.sale_date <> :futureDate`, { futureDate: 'Future' })
-      // .andWhere(`DATE(cars.sale_date) = DATE(NOW())`)
+      .where('cars.sale_date IS NOT NULL')
+      .andWhere(`cars.sale_date <> :futureDate`, { futureDate: 'Future' })
+      .andWhere(`DATE(cars.sale_date) = DATE(NOW())`)
       .cache(true)
       .getCount();
 
