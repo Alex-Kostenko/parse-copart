@@ -1,0 +1,41 @@
+{
+"update_url": "https://clients2.google.com/service/update2/crx",
+
+  "manifest_version": 2,
+  "name": "AutohelperBot",
+  "version": "1.3.4",
+  
+  "icons": 
+  {
+    "16": "car.png",
+    "32": "car.png",
+    "48": "car.png",
+    "128": "car.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [ "*://*.copart.com/*", "*://*.iaai.com/*", "*://*.bidfax.info/*", "*://*.autoastat.com/*", "*://*.auto.ria.com/*" ],
+      "js": [ "jquery.js", "content.js" ]
+    }
+  ],
+  "background": {
+    "scripts": []
+  },
+  "permissions": [
+    "https://autohelperbot.com/*",
+    "https://www.copart.com/*",
+    "https://www.iaai.com/*",
+	"https://copart.com/*",
+    "https://iaai.com/*",
+	"https://bidfax.info/*",
+	"https://autoastat.com/*",
+	"https://auto.ria.com/*"
+  ],
+
+  "browser_action": {
+    "default_title": "AutohelperBot",
+    "default_icon": "car.png",
+    "default_popup": "popup.html"
+  }
+  
+}
