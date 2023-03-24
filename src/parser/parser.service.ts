@@ -254,6 +254,7 @@ export class ParserService {
       images,
       autohelperbot,
       autohelperbotChilds,
+      autohelperbotLotDetails,
       vin,
       auctionFees,
       carCost,
@@ -285,7 +286,7 @@ export class ParserService {
     await page.waitForSelector(autohelperbotChilds);
     const autohelperbotBlock = await page.$(autohelperbot);
     const hasLoadingText = await autohelperbotBlock.$eval(
-      '.lot-details-inner',
+      autohelperbotLotDetails,
       (el: HTMLElement) => {
         return el.textContent.includes('Loading data...');
       },
@@ -371,9 +372,10 @@ export class ParserService {
   }
 
   async writeScriptDetails(page: number, lot_url: string) {
+    const pathToSaveParserStatus = process.env.PATH_TO_SAVE_PARSER_STATUS;
     const content = `Page: ${page}\nLot url: ${lot_url}`;
     fs.writeFile(
-      './src/parser/parser-status',
+      pathToSaveParserStatus,
       content,
       { flag: 'w+' },
       (err: string) => {

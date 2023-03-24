@@ -24,6 +24,7 @@ export const COPART_SELECTORS = {
     fullImagePath: 'full-url',
     autohelperbot: '#autohelperbot_details',
     autohelperbotChilds: '#autohelperbot_details > div > div > div',
+    autohelperbotLotDetails: '.lot-details-inner',
     vin: '.right_box',
     auctionFees: '.copart_commission',
     carCost: '.lot_price_data',
