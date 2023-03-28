@@ -2,7 +2,8 @@
 /dist
 /node_modules
 .env
-/src/csvFiles
+/src/csvFiles/archive
+/src/csvFiles/toParse
 /src/parser/parser-status
 
 

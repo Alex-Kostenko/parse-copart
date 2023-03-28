@@ -1,8 +1,8 @@
 import { CreateCarDto } from 'src/cars/dto/create-car.dto';
 import { CarsMakesEnum } from '../enums/main';
 
-const csv = require('csv-parser');
-const fs = require('fs');
+import * as csv from 'csv-parser';
+import * as fs from 'fs';
 
 export const parseCsv = async (filePath: string): Promise<CreateCarDto[]> => {
   const results: CreateCarDto[] = [];

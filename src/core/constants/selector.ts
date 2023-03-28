@@ -28,7 +28,7 @@ export const COPART_SELECTORS = {
     vin: '.right_box',
     auctionFees: '.copart_commission',
     carCost: '.lot_price_data',
-    lotInformationBlock: '.lot-information',
+    lotInformationBlock: 'div.lot-detail-section',
     carColor: '[data-uname="lotdetailColorvalue"]',
     fuel: '[data-uname="lotdetailFuelvalue"]',
     highlightsXPath:

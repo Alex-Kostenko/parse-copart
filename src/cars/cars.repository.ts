@@ -46,35 +46,82 @@ export class CarsRepository {
     return findCar;
   }
 
-  async findAllPaginate(page: number, pageSize: number): Promise<any> {
-    const query = this.carEntity
+  async findAllPaginate(page: number, pageSize: number): Promise<CarEntity[]> {
+    const currentDate = new Date();
+    const previousDate = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate() - 1,
+    );
+    const startOfDay = new Date(
+      previousDate.getFullYear(),
+      previousDate.getMonth(),
+      previousDate.getDate(),
+      0,
+      0,
+      0,
+    );
+    const endOfDay = new Date(
+      previousDate.getFullYear(),
+      previousDate.getMonth(),
+      previousDate.getDate(),
+      23,
+      59,
+      59,
+    );
+
+    const cars = await this.carEntity
       .createQueryBuilder('cars')
       .orderBy('cars.lot_id', 'ASC')
       .where('cars.sale_date IS NOT NULL')
       .andWhere(`cars.sale_date <> :futureDate`, { futureDate: 'Future' })
-      .andWhere(`DATE(cars.sale_date) = DATE(NOW())`)
+      .andWhere('Date(cars.sale_date) BETWEEN :start AND :end', {
+        start: startOfDay,
+        end: endOfDay,
+      })
       .take(pageSize)
-      .skip((page - 1) * pageSize);
-
-    const totalAmount = await query.getCount();
-    const totalPages = Math.ceil(totalAmount / pageSize);
-
-    const cars = await query.getMany();
+      .skip((page - 1) * pageSize)
+      .getMany();
 
     if (!cars.length) {
       throw new NotFoundException('Cars are not exist');
     }
-    return { cars: cars, totalPages: totalPages };
+    return cars;
   }
 
   async getTotalAmout(): Promise<number> {
+    const currentDate = new Date();
+    const previousDate = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate() - 1,
+    );
+    const startOfDay = new Date(
+      previousDate.getFullYear(),
+      previousDate.getMonth(),
+      previousDate.getDate(),
+      0,
+      0,
+      0,
+    );
+    const endOfDay = new Date(
+      previousDate.getFullYear(),
+      previousDate.getMonth(),
+      previousDate.getDate(),
+      23,
+      59,
+      59,
+    );
+
     const totalAmount = this.carEntity
       .createQueryBuilder('cars')
       .orderBy('cars.lot_id', 'ASC')
       .where('cars.sale_date IS NOT NULL')
       .andWhere(`cars.sale_date <> :futureDate`, { futureDate: 'Future' })
-      .andWhere(`DATE(cars.sale_date) = DATE(NOW())`)
-      .cache(true)
+      .andWhere('Date(cars.sale_date) BETWEEN :start AND :end', {
+        start: startOfDay,
+        end: endOfDay,
+      })
       .getCount();
 
     if (!totalAmount) {

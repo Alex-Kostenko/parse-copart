@@ -4,13 +4,13 @@ import { parseCsv } from './utils/csv.parser';
 
 import { sleep } from './utils/sleep.util';
 import { CarsRepository } from 'src/cars/cars.repository';
-import { clearDirectory } from './utils/clear-directory.util';
 import { CarEntity } from 'src/cars/entities/car.entity';
-import { MIN_YEAR } from './constants/main';
 import { COPART_SELECTORS } from 'src/core/constants/selector';
 import { findPrice } from './utils/get-number.util';
-
-const fs = require('fs');
+import { IPositiveRequest } from 'src/core/types/main';
+import * as path from 'path';
+import * as fs from 'fs';
+import { MIN_YEAR } from './constants/main';
 
 @Injectable()
 export class ParserService {
@@ -32,16 +32,51 @@ export class ParserService {
     });
   }
 
-  async parseCSVs() {
+  async parseCSVs(): Promise<IPositiveRequest> {
+    const directoryPath = process.env.PATH_TO_SAVE_SCV;
+    const archiveDirectoryPath = process.env.PATH_TO_ARCHIVE_SCV;
+    const date = new Date();
+
+    fs.readdir(directoryPath, (err, files) => {
+      if (err) {
+        throw err;
+      }
+
+      if (files.length) {
+        files.forEach((file: string, index: number) => {
+          const sourcePath = path.join(directoryPath, file);
+
+          const destPath = path.join(
+            archiveDirectoryPath,
+            date.toISOString() + `(${index + 1})`,
+          );
+
+          fs.rename(sourcePath, destPath, (err) => {
+            if (err) {
+              throw err;
+            }
+          });
+        });
+      }
+    });
+
     const browser = await this.makeFakeAgent();
     await this.scrapeTodaysCars(browser);
     await browser.close();
+
+    const filesAmount = fs.readdirSync(directoryPath).length;
+    for (let i = 0; i < filesAmount; i++) {
+      await sleep(i * 1000);
+    }
+
+    return { success: true };
   }
 
-  async parseCars() {
+  async parseCars(): Promise<IPositiveRequest> {
     const browser = await this.makeFakeAgent();
     await this.parseCarObjects(browser);
     await browser.close();
+    return { success: true };
   }
 
   private async goToLoginPage(page: Page) {
@@ -107,8 +142,12 @@ export class ParserService {
         y: 8,
       },
     });
+
+    await sleep(500);
     await page.waitForSelector(`li[aria-label="${year}"]`);
     await page.click(`li[aria-label="${year}"]`);
+
+    await sleep(300);
     await page.click(applyButton);
 
     //Date picker
@@ -164,14 +203,13 @@ export class ParserService {
     const baseUrl = process.env.COPART_CATALOG;
     const loginCopart = process.env.COPART_LOGIN;
     const directoryPath = process.env.PATH_TO_SAVE_SCV;
+
     const currentYear = new Date().getFullYear();
 
     const years = Array.from(
       { length: currentYear - MIN_YEAR + 1 },
       (_, i) => currentYear - i,
     );
-
-    clearDirectory(directoryPath);
 
     const page = await browser.newPage();
 
@@ -190,10 +228,11 @@ export class ParserService {
     }
 
     await page.close();
-    fs.readdir(directoryPath, async (err: string, files: string[]) => {
+    fs.readdir(directoryPath, async (err, files: string[]) => {
       if (err) {
-        throw new BadRequestException(`Error reading directory: ${err}`);
+        console.log(`Error reading directory: ${err}`);
       }
+
       for (let i = 0; i < files.length; i++) {
         const filePath = `${directoryPath}/${files[i]}`;
         await this.saveCars(filePath, i, this.carRepository);
@@ -212,7 +251,7 @@ export class ParserService {
           .catch((error) => {
             reject(new BadRequestException(error));
           });
-      }, i * 5000);
+      }, i * 500);
     });
   }
 
@@ -226,7 +265,7 @@ export class ParserService {
     console.log(totalPages, 'totalPages');
 
     do {
-      const { cars } = await this.carRepository.findAllPaginate(page, pageSize);
+      const cars = await this.carRepository.findAllPaginate(page, pageSize);
       await sleep(500);
       console.log('Page', page);
 
@@ -254,7 +293,6 @@ export class ParserService {
       images,
       autohelperbot,
       autohelperbotChilds,
-      autohelperbotLotDetails,
       vin,
       auctionFees,
       carCost,
@@ -269,30 +307,23 @@ export class ParserService {
       key,
     } = COPART_SELECTORS.scrapeOneCar;
     // images
-    await page.waitForSelector(images);
-    const imageGalaryBlock = await page.$(imageGalary);
-    const imagesLinks = await imageGalaryBlock.$$eval(
-      images,
-      (elements: HTMLImageElement[]) =>
-        elements.map((el) => {
-          const fullUrl = el.getAttribute('full-url');
-          if (fullUrl !== null && fullUrl !== undefined) {
-            return fullUrl;
-          }
-        }),
-    );
-    car.images = imagesLinks;
+    try {
+      await page.waitForSelector(images);
+      const imageGalaryBlock = await page.$(imageGalary);
+      const imagesLinks = await imageGalaryBlock.$$eval(
+        images,
+        (elements: HTMLImageElement[]) =>
+          elements.map((el) => {
+            const fullUrl = el.getAttribute('full-url');
+            if (fullUrl !== null && fullUrl !== undefined) {
+              return fullUrl;
+            }
+          }),
+      );
+      car.images = imagesLinks;
 
-    await page.waitForSelector(autohelperbotChilds);
-    const autohelperbotBlock = await page.$(autohelperbot);
-    const hasLoadingText = await autohelperbotBlock.$eval(
-      autohelperbotLotDetails,
-      (el: HTMLElement) => {
-        return el.textContent.includes('Loading data...');
-      },
-    );
-
-    if (!hasLoadingText) {
+      await page.waitForSelector(autohelperbotChilds);
+      const autohelperbotBlock = await page.$(autohelperbot);
       //vin
       await autohelperbotBlock.waitForSelector(vin);
       car.vin = await autohelperbotBlock.$eval(vin, (element: HTMLElement) =>
@@ -312,77 +343,76 @@ export class ParserService {
         carCost,
         (element: HTMLInputElement) => (element ? element.value : ''),
       );
+
+      await page.waitForSelector(lotInformationBlock);
+      const lotInformation = await page.$(lotInformationBlock);
+
+      //color
+      car.color = await lotInformation.$eval(carColor, (element: HTMLElement) =>
+        element ? element.innerText : '',
+      );
+
+      //fuel
+      car.fuel = await lotInformation.$eval(fuel, (element: HTMLElement) =>
+        element ? element.innerText : '',
+      );
+
+      //highlights
+      const highlightsElement = await lotInformation.$x(highlightsXPath);
+      car.highlights = highlightsElement.length
+        ? (
+            await highlightsElement[0].evaluate(
+              (el: HTMLElement) => el.innerText,
+            )
+          ).trim()
+        : '';
+
+      //transmission
+      const transmissionElement = await lotInformation.$x(transmissionXPath);
+      car.transmission = transmissionElement.length
+        ? await transmissionElement[0].evaluate(
+            (el: HTMLElement) => el.innerText,
+          )
+        : '';
+
+      //drive
+      car.drive = await lotInformation.$eval(drive, (element: HTMLElement) =>
+        element ? element.innerText : '',
+      );
+
+      //secondary_damage
+      car.secondary_damage = await lotInformation.$eval(
+        secondaryDamage,
+        (element: HTMLElement) => (element ? element.innerText : ''),
+      );
+
+      //notes
+      car.notes = await lotInformation.$eval(notes, (element: HTMLElement) =>
+        !element || element.innerText === 'There are no Notes for this Lot'
+          ? ''
+          : element.innerText,
+      );
+
+      //key
+      car.key = await lotInformation.$eval(key, (element: HTMLElement) =>
+        element ? element.innerText : '',
+      );
+
+      car.title = `${car.year} ${car.make} ${car.model}`;
+
+      await this.carRepository.saveOne(car);
+    } catch {
+      throw new BadRequestException('Failed to scrape car');
     }
-
-    await page.waitForSelector(carColor);
-    const lotInformation = await page.$(lotInformationBlock);
-
-    //color
-    car.color = await lotInformation.$eval(carColor, (element: HTMLElement) =>
-      element ? element.innerText : '',
-    );
-
-    //fuel
-    car.fuel = await lotInformation.$eval(fuel, (element: HTMLElement) =>
-      element ? element.innerText : '',
-    );
-
-    //highlights
-    const highlightsElement = await lotInformation.$x(highlightsXPath);
-    car.highlights = highlightsElement.length
-      ? (
-          await highlightsElement[0].evaluate((el: HTMLElement) => el.innerText)
-        ).trim()
-      : '';
-
-    //transmission
-    const transmissionElement = await lotInformation.$x(transmissionXPath);
-    car.transmission = transmissionElement.length
-      ? await transmissionElement[0].evaluate((el: HTMLElement) => el.innerText)
-      : '';
-
-    //drive
-    car.drive = await lotInformation.$eval(drive, (element: HTMLElement) =>
-      element ? element.innerText : '',
-    );
-
-    //secondary_damage
-    car.secondary_damage = await lotInformation.$eval(
-      secondaryDamage,
-      (element: HTMLElement) => (element ? element.innerText : ''),
-    );
-
-    //notes
-    car.notes = await lotInformation.$eval(notes, (element: HTMLElement) =>
-      !element || element.innerText === 'There are no Notes for this Lot'
-        ? ''
-        : element.innerText,
-    );
-
-    //key
-    car.key = await lotInformation.$eval(key, (element: HTMLElement) =>
-      element ? element.innerText : '',
-    );
-
-    car.title = `${car.year} ${car.make} ${car.model}`;
-
-    console.log(car);
-
-    await this.carRepository.saveOne(car);
   }
 
   async writeScriptDetails(page: number, lot_url: string) {
     const pathToSaveParserStatus = process.env.PATH_TO_SAVE_PARSER_STATUS;
     const content = `Page: ${page}\nLot url: ${lot_url}`;
-    fs.writeFile(
-      pathToSaveParserStatus,
-      content,
-      { flag: 'w+' },
-      (err: string) => {
-        if (err) {
-          console.error(err);
-        }
-      },
-    );
+    fs.writeFile(pathToSaveParserStatus, content, { flag: 'w+' }, (err) => {
+      if (err) {
+        console.error(err);
+      }
+    });
   }
 }
