@@ -278,7 +278,14 @@ export class ParserService {
         console.log('Lot id: ', cars[i].lot_id);
         const start = Date.now();
         console.log('----script starts----');
-        if (cars[i].lot_url) await this.scrapeOneCar(browserPage, cars[i]);
+        if (cars[i].lot_url) {
+          try {
+            await this.scrapeOneCar(browserPage, cars[i]);
+          } catch {
+            console.log(cars[i].lot_url, ' ERROR');
+            continue;
+          }
+        }
         const end = Date.now();
         console.log('----script ends----');
         console.log(`Execution time: ${end - start} ms`);

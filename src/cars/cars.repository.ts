@@ -47,7 +47,12 @@ export class CarsRepository {
   }
 
   async findAllPaginate(page: number, pageSize: number): Promise<CarEntity[]> {
-    const currentDate = new Date();
+    const date = new Date();
+    const currentDate = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate() - 1,
+    );
     const previousDate = new Date(
       currentDate.getFullYear(),
       currentDate.getMonth(),
@@ -90,7 +95,12 @@ export class CarsRepository {
   }
 
   async getTotalAmout(): Promise<number> {
-    const currentDate = new Date();
+    const date = new Date();
+    const currentDate = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate() - 1,
+    );
     const previousDate = new Date(
       currentDate.getFullYear(),
       currentDate.getMonth(),
