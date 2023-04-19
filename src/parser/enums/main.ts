@@ -80,7 +80,7 @@ export enum CarsMakesEnum {
   RIVA = 'RIVIAN',
 
   SAA = 'SAAB',
-  SALe = 'SALEEN',
+  SALE = 'SALEEN',
   SATU = 'SATURN',
   SMRT = 'SMART',
   SUBA = 'SUBARU',
