@@ -124,7 +124,6 @@ export class ParserService {
     const token = await this.getToken(page);
 
     await this.addCarsToWatchList(addwatchlistUrl, token, page);
-    await sleep(50000000);
 
     await browser.close();
   }
@@ -185,9 +184,9 @@ export class ParserService {
 
     await this.goToLoginPage(page);
 
-    // await page.goto(watchList, {
-    //   waitUntil: 'domcontentloaded',
-    // });
+    await page.goto(watchList, {
+      waitUntil: 'domcontentloaded',
+    });
 
     const token = await this.getToken(page);
 
@@ -216,40 +215,43 @@ export class ParserService {
       watchListOnly: false,
     };
 
-    await page.evaluate(
-      async (url, token, body, totalCars) => {
-        let { page, size } = body;
-
-        let xhr = new XMLHttpRequest();
-        xhr.open('POST', url);
-        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
-        xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
-        xhr.setRequestHeader('x-xsrf-token', token);
-        xhr.send(JSON.stringify(body));
-        xhr.onload = () => {
-          const obj = JSON.parse(xhr.response);
-          totalCars = obj.data.results.totalElements;
-          const lots = obj.data.results.content;
-          const lotsOnApproval = lots
-            .filter((lot) => lot.dynamicLotDetails.saleStatus === 'ON_APPROVAL')
-            .map((lot) => ({
-              lot_id: lot.lotNumberStr,
-              cost_of_car: lot.dynamicLotDetails.currentBid,
-            }));
-          console.log(lotsOnApproval);
-
-          // await this.carRepository.saveAll(lotsOnApproval);
-          if ((page + 1) * size < totalCars) {
-            page++;
-          }
-          console.log((page + 1) * size);
-        };
+    const carObject = await page.evaluate(
+      async (url, token, body) => {
+        return new Promise((resolve) => {
+          let xhr = new XMLHttpRequest();
+          xhr.open('POST', url);
+          xhr.setRequestHeader(
+            'Content-type',
+            'application/json; charset=utf-8',
+          );
+          xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
+          xhr.setRequestHeader('x-xsrf-token', token);
+          xhr.send(JSON.stringify(body));
+          xhr.onload = () => {
+            resolve(xhr.responseText);
+          };
+        });
       },
       url,
       token,
       body,
-      totalCars,
     );
+
+    const { data } = JSON.parse(carObject);
+    totalCars = data.results.totalElements;
+    const lots = data.results.content;
+    const lotsOnApproval = lots
+      .filter((lot) => lot.dynamicLotDetails.saleStatus === 'ON_APPROVAL')
+      .map((lot) => ({
+        lot_id: lot.lotNumberStr,
+        cost_of_car: lot.dynamicLotDetails.currentBid,
+      }));
+    console.log(lotsOnApproval);
+
+    // await this.carRepository.saveAll(lotsOnApproval);
+    if ((body.page + 1) * body.size < totalCars) {
+      body.page++;
+    }
   }
 
   async waitUntilDownload(page, fileName = '') {

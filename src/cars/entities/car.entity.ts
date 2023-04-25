@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryColumn } from 'typeorm';
 
 @Entity('cars')
 export class CarEntity {
@@ -6,7 +6,7 @@ export class CarEntity {
   lot_id: string;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
+  created_at: Date;
 
   @Column({ type: Number, nullable: true })
   year: number;
