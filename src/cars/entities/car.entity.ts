@@ -1,15 +1,12 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('cars')
 export class CarEntity {
   @PrimaryColumn({ type: String })
   lot_id: string;
 
-  @Column({ type: String, nullable: true })
-  lot_url: string;
-
-  @Column({ type: String, nullable: true })
-  title: string;
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 
   @Column({ type: Number, nullable: true })
   year: number;
@@ -39,25 +36,16 @@ export class CarEntity {
   fuel: string;
 
   @Column({ type: String, nullable: true })
-  grid: string;
-
-  @Column({ type: String, nullable: true })
-  title_code: string;
-
-  @Column({ type: String, nullable: true })
   odometer: string;
 
   @Column({ type: String, nullable: true })
-  odometer_description: string;
+  odometer_brand: string;
 
   @Column({ type: String, nullable: true })
   primary_damage: string;
 
   @Column({ type: String, nullable: true })
   secondary_damage: string;
-
-  @Column({ type: Number, nullable: true })
-  item_number: number;
 
   @Column({ type: String, nullable: true })
   sale_date: string;
@@ -66,26 +54,47 @@ export class CarEntity {
   retail_value: string;
 
   @Column({ type: String, nullable: true })
-  repair_estimate: string;
+  repair_cost: string;
 
   @Column({ type: String, nullable: true })
   sale_location: string;
-
-  @Column({ type: String, array: true, default: [] })
-  images: string[];
-
-  @Column({ type: String, nullable: true })
-  highlights: string;
 
   @Column({ type: Number, nullable: true })
   car_cost: number;
 
   @Column({ type: String, nullable: true })
-  auction_fees: string;
-
-  @Column({ type: String, nullable: true })
   key: string;
 
   @Column({ type: String, nullable: true })
-  notes: string;
+  vehicle_type: string;
+
+  @Column({ type: String, nullable: true })
+  model_detail: string;
+
+  @Column({ type: String, nullable: true })
+  body_style: string;
+
+  @Column({ type: String, nullable: true })
+  sale_title_state: string;
+
+  @Column({ type: String, nullable: true })
+  run: string;
+
+  @Column({ type: String, nullable: true })
+  sale_status: string;
+
+  @Column({ type: String, nullable: true })
+  location_city: string;
+
+  @Column({ type: String, nullable: true })
+  location_state: string;
+
+  @Column({ type: String, nullable: true })
+  images_url: string;
+
+  @Column({ type: String, nullable: true })
+  trim: string;
+
+  @Column({ type: Date, nullable: true })
+  last_updated_at: Date;
 }

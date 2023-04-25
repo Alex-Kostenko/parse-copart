@@ -1,16 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
 import puppeteer, { Browser, Page } from 'puppeteer';
-import { parseCsv } from './utils/csv.parser';
-
-import { sleep } from './utils/sleep.util';
-import { CarsRepository } from 'src/cars/cars.repository';
-import { CarEntity } from 'src/cars/entities/car.entity';
-import { COPART_SELECTORS } from 'src/core/constants/selector';
-import { findPrice } from './utils/get-number.util';
-import { IPositiveRequest } from 'src/core/types/main';
-import * as path from 'path';
+import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
-import { MIN_YEAR } from './constants/main';
+import * as path from 'path';
+
+import { parseCsv } from './utils/csv.parser';
+import { CarsRepository } from 'src/cars/cars.repository';
+import { IPositiveRequest } from 'src/core/types/main';
+import { COPART_SELECTORS } from 'src/core/constants/selector';
+import { sleep } from './utils/sleep.util';
 
 @Injectable()
 export class ParserService {
@@ -35,46 +32,48 @@ export class ParserService {
   async parseCSVs(): Promise<IPositiveRequest> {
     const directoryPath = process.env.PATH_TO_SAVE_SCV;
     const archiveDirectoryPath = process.env.PATH_TO_ARCHIVE_SCV;
+    const downloadSalesData = process.env.PATH_TO_DOWNLOAD_SALES_DATA;
+    const loginCopart = process.env.COPART_LOGIN;
     const date = new Date();
 
-    fs.readdir(directoryPath, (err, files) => {
+    const sourcePath = directoryPath + '/salesdata.csv';
+    const destPath = path.join(archiveDirectoryPath, date.toISOString());
+    fs.rename(sourcePath, destPath, (err) => {
       if (err) {
         throw err;
-      }
-
-      if (files.length) {
-        files.forEach((file: string, index: number) => {
-          const sourcePath = path.join(directoryPath, file);
-
-          const destPath = path.join(
-            archiveDirectoryPath,
-            date.toISOString() + `(${index + 1})`,
-          );
-
-          fs.rename(sourcePath, destPath, (err) => {
-            if (err) {
-              throw err;
-            }
-          });
-        });
       }
     });
 
     const browser = await this.makeFakeAgent();
-    await this.scrapeTodaysCars(browser);
-    await browser.close();
+    const page = await browser.newPage();
+    const client = await page.target().createCDPSession();
+    await client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: directoryPath,
+    });
+    await page.setBypassCSP(true);
+    await page.goto(loginCopart, { waitUntil: 'domcontentloaded' });
 
-    const filesAmount = fs.readdirSync(directoryPath).length;
-    for (let i = 0; i < filesAmount; i++) {
-      await sleep(i * 1000);
-    }
+    await this.goToLoginPage(page);
 
-    return { success: true };
-  }
+    await page.goto(downloadSalesData, { waitUntil: 'domcontentloaded' });
 
-  async parseCars(): Promise<IPositiveRequest> {
-    const browser = await this.makeFakeAgent();
-    await this.parseCarObjects(browser);
+    await page.waitForSelector('[ng-click="downloadCSV()"]');
+
+    page.click('[ng-click="downloadCSV()"]');
+
+    await this.waitUntilDownload(page, 'salesdata.csv');
+
+    await sleep(100);
+
+    await parseCsv(directoryPath + '/salesdata.csv')
+      .then(async (results) => {
+        await this.carRepository.saveAll(results);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
+
     await browser.close();
     return { success: true };
   }
@@ -106,311 +105,28 @@ export class ParserService {
     }
   }
 
-  private async goToSearchPage(page: Page, year: number) {
-    const { fromDateSelect, toDateSelect, applyButton } =
-      COPART_SELECTORS.searchPage;
-    const {
-      datePickerPanel,
-      startDatePicker,
-      currentDay,
-      currentDaySpan,
-      endDatePicker,
-      exportCSVButton,
-    } = COPART_SELECTORS.filters;
-
-    //YEAR filter
-    await sleep(3000);
-
-    await page.waitForSelector(fromDateSelect);
-    const yearDropdownStart = await page.$(fromDateSelect);
-    await yearDropdownStart.click({
-      offset: {
-        x: 20,
-        y: 8,
-      },
-    });
-    await sleep(3000);
-    await page.waitForSelector(`li[aria-label="${year}"]`);
-    await page.click(`li[aria-label="${year}"]`);
-
-    await sleep(3000);
-    await page.waitForSelector(toDateSelect);
-    const yearDropdownEnd = await page.$(toDateSelect);
-    await yearDropdownEnd.click({
-      offset: {
-        x: 20,
-        y: 8,
-      },
-    });
-
-    await sleep(500);
-    await page.waitForSelector(`li[aria-label="${year}"]`);
-    await page.click(`li[aria-label="${year}"]`);
-
-    await sleep(300);
-    await page.click(applyButton);
-
-    //Date picker
-    await page.waitForSelector(datePickerPanel);
-    const saleDataPanel = await page.$(datePickerPanel);
-
-    await saleDataPanel.click({
-      offset: {
-        x: 0,
-        y: 0,
-      },
-    });
-
-    await sleep(3000);
-    await page.waitForSelector(startDatePicker);
-    const inputStartDate = await page.$(startDatePicker);
-
-    await inputStartDate.click({
-      offset: {
-        x: 8,
-        y: 8,
-      },
-    });
-    await sleep(2000);
-    await page.waitForSelector(currentDay);
-    const datepickerStart = await page.$(currentDaySpan);
-    await datepickerStart.click();
-
-    await sleep(5000);
-
-    await page.waitForSelector(endDatePicker);
-    const inputEndDate = await page.$(endDatePicker);
-    await inputEndDate.click({
-      offset: {
-        x: 8,
-        y: 8,
-      },
-    });
-
-    await sleep(2000);
-    await page.waitForSelector(currentDay);
-    const datepickerEnd = await page.$(currentDay);
-    await datepickerEnd.click();
-
-    await sleep(5000);
-
-    await page.waitForSelector(exportCSVButton);
-    await page.click(exportCSVButton);
-    await sleep(5000);
-  }
-
-  async scrapeTodaysCars(browser: any) {
-    const baseUrl = process.env.COPART_CATALOG;
+  async watchlist() {
+    const addwatchlistUrl = process.env.PATH_ADD_TO_WATCHLIST;
     const loginCopart = process.env.COPART_LOGIN;
-    const directoryPath = process.env.PATH_TO_SAVE_SCV;
+    const copartCatalog = process.env.COPART_CATALOG;
 
-    const currentYear = new Date().getFullYear();
-
-    const years = Array.from(
-      { length: currentYear - MIN_YEAR + 1 },
-      (_, i) => currentYear - i,
-    );
-
+    const browser = await this.makeFakeAgent();
     const page = await browser.newPage();
-
-    const client = await page.target().createCDPSession();
-    await client.send('Page.setDownloadBehavior', {
-      behavior: 'allowAndName',
-      downloadPath: directoryPath,
-    });
-
+    await page.setBypassCSP(true);
     await page.goto(loginCopart, { waitUntil: 'domcontentloaded' });
+
     await this.goToLoginPage(page);
 
-    for (let year of years) {
-      await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
-      await this.goToSearchPage(page, year);
-    }
-
-    await page.close();
-    fs.readdir(directoryPath, async (err, files: string[]) => {
-      if (err) {
-        console.log(`Error reading directory: ${err}`);
-      }
-
-      for (let i = 0; i < files.length; i++) {
-        const filePath = `${directoryPath}/${files[i]}`;
-        await this.saveCars(filePath, i, this.carRepository);
-      }
+    await page.goto(copartCatalog, {
+      waitUntil: 'domcontentloaded',
     });
-  }
 
-  async saveCars(filePath: string, i: number, carRepository: CarsRepository) {
-    return new Promise<void>(function (resolve, reject) {
-      setTimeout(async () => {
-        await parseCsv(filePath)
-          .then(async (results) => {
-            await carRepository.saveAll(results);
-            resolve();
-          })
-          .catch((error) => {
-            reject(new BadRequestException(error));
-          });
-      }, i * 500);
-    });
-  }
+    const token = await this.getToken(page);
 
-  async parseCarObjects(browser: any) {
-    let page = 1;
-    const pageSize = 20;
-    const totalPages = Math.ceil(
-      (await this.carRepository.getTotalAmout()) / pageSize,
-    );
-    const browserPage = await browser.newPage();
-    console.log(totalPages, 'totalPages');
+    await this.addCarsToWatchList(addwatchlistUrl, token, page);
+    await sleep(50000000);
 
-    do {
-      const cars = await this.carRepository.findAllPaginate(page, pageSize);
-      await sleep(500);
-      console.log('Page', page);
-
-      for (let i = 0; i < cars.length; i++) {
-        await browserPage.goto(cars[i].lot_url, {
-          waitUntil: 'domcontentloaded',
-        });
-
-        this.writeScriptDetails(page, cars[i].lot_id);
-        console.log('Lot id: ', cars[i].lot_id);
-        const start = Date.now();
-        console.log('----script starts----');
-        if (cars[i].lot_url) {
-          try {
-            await this.scrapeOneCar(browserPage, cars[i]);
-          } catch {
-            console.log(cars[i].lot_url, ' ERROR');
-            continue;
-          }
-        }
-        const end = Date.now();
-        console.log('----script ends----');
-        console.log(`Execution time: ${end - start} ms`);
-      }
-      page++;
-    } while (page < totalPages);
-  }
-
-  async scrapeOneCar(page: any, car: CarEntity) {
-    const {
-      imageGalary,
-      images,
-      autohelperbot,
-      autohelperbotChilds,
-      vin,
-      auctionFees,
-      carCost,
-      lotInformationBlock,
-      carColor,
-      fuel,
-      highlightsXPath,
-      transmissionXPath,
-      drive,
-      secondaryDamage,
-      notes,
-      key,
-    } = COPART_SELECTORS.scrapeOneCar;
-    // images
-    try {
-      await page.waitForSelector(images);
-      const imageGalaryBlock = await page.$(imageGalary);
-      const imagesLinks = await imageGalaryBlock.$$eval(
-        images,
-        (elements: HTMLImageElement[]) =>
-          elements.map((el) => {
-            const fullUrl = el.getAttribute('full-url');
-            if (fullUrl !== null && fullUrl !== undefined) {
-              return fullUrl;
-            }
-          }),
-      );
-      car.images = imagesLinks;
-
-      await page.waitForSelector(autohelperbotChilds);
-      const autohelperbotBlock = await page.$(autohelperbot);
-      //vin
-      await autohelperbotBlock.waitForSelector(vin);
-      car.vin = await autohelperbotBlock.$eval(vin, (element: HTMLElement) =>
-        element ? element.innerText : '',
-      );
-
-      //auction_fees
-      const auctionFeesEL = await autohelperbotBlock.$eval(
-        auctionFees,
-        (element: HTMLElement) => (element ? element.innerText : ''),
-      );
-
-      car.auction_fees = findPrice(auctionFeesEL);
-
-      //car_cost
-      car.car_cost = await autohelperbotBlock.$eval(
-        carCost,
-        (element: HTMLInputElement) => (element ? element.value : ''),
-      );
-
-      await page.waitForSelector(lotInformationBlock);
-      const lotInformation = await page.$(lotInformationBlock);
-
-      //color
-      car.color = await lotInformation.$eval(carColor, (element: HTMLElement) =>
-        element ? element.innerText : '',
-      );
-
-      //fuel
-      car.fuel = await lotInformation.$eval(fuel, (element: HTMLElement) =>
-        element ? element.innerText : '',
-      );
-
-      //highlights
-      const highlightsElement = await lotInformation.$x(highlightsXPath);
-      car.highlights = highlightsElement.length
-        ? (
-            await highlightsElement[0].evaluate(
-              (el: HTMLElement) => el.innerText,
-            )
-          ).trim()
-        : '';
-
-      //transmission
-      const transmissionElement = await lotInformation.$x(transmissionXPath);
-      car.transmission = transmissionElement.length
-        ? await transmissionElement[0].evaluate(
-            (el: HTMLElement) => el.innerText,
-          )
-        : '';
-
-      //drive
-      car.drive = await lotInformation.$eval(drive, (element: HTMLElement) =>
-        element ? element.innerText : '',
-      );
-
-      //secondary_damage
-      car.secondary_damage = await lotInformation.$eval(
-        secondaryDamage,
-        (element: HTMLElement) => (element ? element.innerText : ''),
-      );
-
-      //notes
-      car.notes = await lotInformation.$eval(notes, (element: HTMLElement) =>
-        !element || element.innerText === 'There are no Notes for this Lot'
-          ? ''
-          : element.innerText,
-      );
-
-      //key
-      car.key = await lotInformation.$eval(key, (element: HTMLElement) =>
-        element ? element.innerText : '',
-      );
-
-      car.title = `${car.year} ${car.make} ${car.model}`;
-
-      await this.carRepository.saveOne(car);
-    } catch {
-      throw new BadRequestException('Failed to scrape car');
-    }
+    await browser.close();
   }
 
   async writeScriptDetails(page: number, lot_url: string) {
@@ -422,4 +138,183 @@ export class ParserService {
       }
     });
   }
+
+  async addCarsToWatchList(url: string, token: string, page: Page) {
+    const searchCars = await this.carRepository.getAll();
+
+    for (const car of searchCars) {
+      await page.evaluate(
+        async (url, responseText) => {
+          await fetch(url, {
+            method: 'POST',
+            body: '{}',
+            headers: {
+              'x-requested-with': 'XMLHttpRequest',
+              'x-xsrf-token': responseText,
+            },
+          });
+        },
+        url + car.lot_id,
+        token,
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  async getToken(page: Page) {
+    const token = await page.$$eval('script', (nodes) => {
+      const el = nodes.find((n) => n.text.includes('csrfToken'));
+      const index = el.text.lastIndexOf('csrfToken') + 'csrfToken'.length;
+
+      const token = el.text.substring(index + 3, index + 39);
+
+      return token;
+    });
+    return token;
+  }
+
+  async updateLotFinalBid() {
+    const browser = await this.makeFakeAgent();
+    const page = await browser.newPage();
+    const watchList = process.env.PATH_TO_WATCHLIST;
+    const loginCopart = process.env.COPART_LOGIN;
+    const lotWatchListUrl = process.env.GET_WATCHLIST;
+
+    await page.goto(loginCopart, { waitUntil: 'domcontentloaded' });
+
+    await this.goToLoginPage(page);
+
+    // await page.goto(watchList, {
+    //   waitUntil: 'domcontentloaded',
+    // });
+
+    const token = await this.getToken(page);
+
+    await this.saveFromWatchList(lotWatchListUrl, token, page);
+    await sleep(50000000);
+  }
+
+  async saveFromWatchList(url: string, token: string, page: Page) {
+    let totalCars: number;
+    const body = {
+      backUrl: '',
+      defaultSort: false,
+      displayName: '',
+      filter: {},
+      freeFormSearch: false,
+      hideImages: false,
+      includeTagByField: {},
+      page: 0,
+      query: ['*'],
+      rawParams: {},
+      searchName: '',
+      size: 2000,
+      sort: ['auction_date_type desc', 'auction_date_utc asc'],
+      specificRowProvided: false,
+      start: 0,
+      watchListOnly: false,
+    };
+
+    await page.evaluate(
+      async (url, token, body, totalCars) => {
+        let { page, size } = body;
+
+        let xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
+        xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
+        xhr.setRequestHeader('x-xsrf-token', token);
+        xhr.send(JSON.stringify(body));
+        xhr.onload = () => {
+          const obj = JSON.parse(xhr.response);
+          totalCars = obj.data.results.totalElements;
+          const lots = obj.data.results.content;
+          const lotsOnApproval = lots
+            .filter((lot) => lot.dynamicLotDetails.saleStatus === 'ON_APPROVAL')
+            .map((lot) => ({
+              lot_id: lot.lotNumberStr,
+              cost_of_car: lot.dynamicLotDetails.currentBid,
+            }));
+          console.log(lotsOnApproval);
+
+          // await this.carRepository.saveAll(lotsOnApproval);
+          if ((page + 1) * size < totalCars) {
+            page++;
+          }
+          console.log((page + 1) * size);
+        };
+      },
+      url,
+      token,
+      body,
+      totalCars,
+    );
+  }
+
+  async waitUntilDownload(page, fileName = '') {
+    return new Promise((resolve, reject) => {
+      page._client().on('Page.downloadProgress', (e) => {
+        // or 'Browser.downloadProgress'
+        if (e.state === 'completed') {
+          resolve(fileName);
+        } else if (e.state === 'canceled') {
+          reject();
+        }
+      });
+    });
+  }
 }
+
+/*async saveFromWatchList(url: string, token: string, page: Page) {
+    const body = {
+      backUrl: '',
+      defaultSort: false,
+      displayName: '',
+      filter: {},
+      freeFormSearch: false,
+      hideImages: false,
+      includeTagByField: {},
+      page: 0,
+      query: ['*'],
+      rawParams: {},
+      searchName: '',
+      size: 20,
+      sort: ['auction_date_type desc', 'auction_date_utc asc'],
+      specificRowProvided: false,
+      start: 0,
+      watchListOnly: false,
+    };
+    await sleep(5000);
+    await page.evaluate(
+      async (url, token, body) => {
+        await fetch(url, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: {
+            'x-requested-with': 'XMLHttpRequest',
+            'x-xsrf-token': token,
+          },
+        }).then(async (res) => {
+          res.json().then((res) => console.log(res));
+
+          // const lots = json.results.content;
+
+          // const lotsOnApproval = lots
+          //   .filter((lot) => lot.dynamicLotDetails.saleStatus === 'ON_APPROVAL')
+          //   .map((lot) => ({
+          //     lot_id: lot.lotNumberStr,
+          //     cost_of_car: lot.dynamicLotDetails.currentBid,
+          //   }));
+          // console.log(lotsOnApproval);
+
+          // await this.carRepository.saveAll(lotsOnApproval);
+        });
+      },
+      url,
+      token,
+      body,
+    );
+
+    await sleep(50000000);
+  } */

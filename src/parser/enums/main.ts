@@ -101,3 +101,15 @@ export enum KeyEnum {
   YES = 'true',
   NO = 'false',
 }
+
+export enum VenicleTypeEnum {
+  A = 'ATV',
+  C = 'MOTORCYCLE',
+  E = 'INDUSTRIAL EQUIPMENT',
+  V = 'AUTOMOBILE',
+  K = 'BOX TRUCKS',
+  L = 'TRAILERS',
+  M = 'BOAT',
+  R = 'RECREATIONAL VEHICLE (RV)',
+  U = 'HEAVY DUTY TRUCKS',
+}
