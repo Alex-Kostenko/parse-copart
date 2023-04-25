@@ -1,8 +1,14 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as moment from 'moment';
 import { IPositiveRequest } from 'src/core/types/main';
 import { Repository } from 'typeorm';
 import { CreateCarDto } from './dto/create-car.dto';
+import { UpdateCarDto } from './dto/update-car.dto';
 import { CarEntity } from './entities/car.entity';
 
 @Injectable()
@@ -23,11 +29,43 @@ export class CarsRepository {
     return { success: true };
   }
 
+  async updateCar(
+    lotId: string,
+    updateCarDto: UpdateCarDto,
+  ): Promise<IPositiveRequest> {
+    const { car_cost, sale_status } = updateCarDto;
+    const searchCar = await this.carEntity.findOne({
+      where: { lot_id: lotId },
+    });
+
+    if (!searchCar) throw new NotFoundException('Car not found');
+    searchCar.sale_status = sale_status;
+
+    if (car_cost) {
+      searchCar.car_cost = car_cost;
+    }
+
+    const updateCar = await this.carEntity.save(searchCar);
+
+    if (!updateCar) {
+      throw new BadRequestException('Couldn`t update car');
+    }
+
+    return { success: true };
+  }
+
   async getAll() {
+    const currentDate = new Date();
+
     const carEntities = await this.carEntity
       .createQueryBuilder('cars')
       .select('cars.lot_id')
-      .getMany(); //TODO
+      .where('DATE(cars.created_at) = DATE(:created_at)', {
+        created_at: currentDate,
+      })
+      .getMany();
+
+    if (!carEntities) throw new NotFoundException('Cars are not found');
 
     return carEntities;
   }

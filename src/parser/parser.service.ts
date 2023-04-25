@@ -1,3 +1,4 @@
+// @ts-nocheck
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
@@ -8,6 +9,8 @@ import { CarsRepository } from 'src/cars/cars.repository';
 import { IPositiveRequest } from 'src/core/types/main';
 import { COPART_SELECTORS } from 'src/core/constants/selector';
 import { sleep } from './utils/sleep.util';
+import { UpdateCarDto } from 'src/cars/dto/update-car.dto';
+import { rejects } from 'assert';
 
 @Injectable()
 export class ParserService {
@@ -177,85 +180,82 @@ export class ParserService {
   async updateLotFinalBid() {
     const browser = await this.makeFakeAgent();
     const page = await browser.newPage();
-    const watchList = process.env.PATH_TO_WATCHLIST;
     const loginCopart = process.env.COPART_LOGIN;
-    const lotWatchListUrl = process.env.GET_WATCHLIST;
+    const getLotDetails = process.env.GET_LOT_DETAILS;
+    const watchlist = process.env.PATH_TO_WATCHLIST;
 
     await page.goto(loginCopart, { waitUntil: 'domcontentloaded' });
 
     await this.goToLoginPage(page);
 
-    // await page.goto(watchList, {
-    //   waitUntil: 'domcontentloaded',
-    // });
+    await page.goto(watchlist, {
+      waitUntil: 'domcontentloaded',
+    });
 
     const token = await this.getToken(page);
 
-    await this.saveFromWatchList(lotWatchListUrl, token, page);
+    const searchCars = await this.carRepository.getAll();
+
+    for (const car of searchCars) {
+      const lotUrl = getLotDetails + car.lot_id;
+      await this.getFinalBid(lotUrl, token, page);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
     await sleep(50000000);
   }
 
-  async saveFromWatchList(url: string, token: string, page: Page) {
-    let totalCars: number;
-    const body = {
-      backUrl: '',
-      defaultSort: false,
-      displayName: '',
-      filter: {},
-      freeFormSearch: false,
-      hideImages: false,
-      includeTagByField: {},
-      page: 0,
-      query: ['*'],
-      rawParams: {},
-      searchName: '',
-      size: 2000,
-      sort: ['auction_date_type desc', 'auction_date_utc asc'],
-      specificRowProvided: false,
-      start: 0,
-      watchListOnly: false,
-    };
+  async getFinalBid(url: string, token: string, page: Page) {
+    const updateCar = new UpdateCarDto();
 
-    await page.evaluate(
-      async (url, token, body, totalCars) => {
-        let { page, size } = body;
-
-        let xhr = new XMLHttpRequest();
-        xhr.open('POST', url);
-        xhr.setRequestHeader('Content-type', 'application/json; charset=utf-8');
-        xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
-        xhr.setRequestHeader('x-xsrf-token', token);
-        xhr.send(JSON.stringify(body));
-        xhr.onload = () => {
-          const obj = JSON.parse(xhr.response);
-          totalCars = obj.data.results.totalElements;
-          const lots = obj.data.results.content;
-          const lotsOnApproval = lots
-            .filter((lot) => lot.dynamicLotDetails.saleStatus === 'ON_APPROVAL')
-            .map((lot) => ({
-              lot_id: lot.lotNumberStr,
-              cost_of_car: lot.dynamicLotDetails.currentBid,
-            }));
-          console.log(lotsOnApproval);
-
-          // await this.carRepository.saveAll(lotsOnApproval);
-          if ((page + 1) * size < totalCars) {
-            page++;
-          }
-          console.log((page + 1) * size);
-        };
+    const carObject = await page.evaluate(
+      async (url, token) => {
+        return await new Promise((resolve) => {
+          let xhr = new XMLHttpRequest();
+          xhr.open('GET', url);
+          xhr.setRequestHeader(
+            'Content-type',
+            'application/json; charset=utf-8',
+          );
+          xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
+          xhr.setRequestHeader('x-xsrf-token', token);
+          xhr.send();
+          xhr.onload = () => {
+            resolve(xhr.responseText);
+          };
+          xhr.onerror = () => {
+            reject(xhr.responseText);
+          };
+        });
       },
       url,
       token,
-      body,
-      totalCars,
     );
+
+    const { data } = JSON.parse(carObject);
+    const newSaleStatus = data.lotDetails.dynamicLotDetails.saleStatus;
+    const finalBid: number = data.lotDetails.dynamicLotDetails.currentBid;
+    const lotNumber: string = data.lotDetails.lotNumberStr;
+
+    updateCar.sale_status = newSaleStatus;
+    if (finalBid && newSaleStatus === 'ON_APPROVAL') {
+      updateCar.car_cost = finalBid;
+    }
+
+    console.log(
+      'finalBid:',
+      finalBid,
+      '  lotNumber:',
+      lotNumber,
+      'saleStatus: ',
+      newSaleStatus,
+    );
+
+    await this.carRepository.updateCar(lotNumber, updateCar);
   }
 
   async waitUntilDownload(page, fileName = '') {
     return new Promise((resolve, reject) => {
       page._client().on('Page.downloadProgress', (e) => {
-        // or 'Browser.downloadProgress'
         if (e.state === 'completed') {
           resolve(fileName);
         } else if (e.state === 'canceled') {
@@ -265,56 +265,3 @@ export class ParserService {
     });
   }
 }
-
-/*async saveFromWatchList(url: string, token: string, page: Page) {
-    const body = {
-      backUrl: '',
-      defaultSort: false,
-      displayName: '',
-      filter: {},
-      freeFormSearch: false,
-      hideImages: false,
-      includeTagByField: {},
-      page: 0,
-      query: ['*'],
-      rawParams: {},
-      searchName: '',
-      size: 20,
-      sort: ['auction_date_type desc', 'auction_date_utc asc'],
-      specificRowProvided: false,
-      start: 0,
-      watchListOnly: false,
-    };
-    await sleep(5000);
-    await page.evaluate(
-      async (url, token, body) => {
-        await fetch(url, {
-          method: 'POST',
-          body: JSON.stringify(body),
-          headers: {
-            'x-requested-with': 'XMLHttpRequest',
-            'x-xsrf-token': token,
-          },
-        }).then(async (res) => {
-          res.json().then((res) => console.log(res));
-
-          // const lots = json.results.content;
-
-          // const lotsOnApproval = lots
-          //   .filter((lot) => lot.dynamicLotDetails.saleStatus === 'ON_APPROVAL')
-          //   .map((lot) => ({
-          //     lot_id: lot.lotNumberStr,
-          //     cost_of_car: lot.dynamicLotDetails.currentBid,
-          //   }));
-          // console.log(lotsOnApproval);
-
-          // await this.carRepository.saveAll(lotsOnApproval);
-        });
-      },
-      url,
-      token,
-      body,
-    );
-
-    await sleep(50000000);
-  } */
