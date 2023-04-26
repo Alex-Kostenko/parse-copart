@@ -4,11 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import * as moment from 'moment';
-import { IPositiveRequest } from 'src/core/types/main';
+import { IPositiveRequest } from 'src/utils/types';
 import { Repository } from 'typeorm';
+
 import { CreateCarDto } from './dto/create-car.dto';
-import { UpdateCarDto } from './dto/update-car.dto';
 import { CarEntity } from './entities/car.entity';
 
 @Injectable()
@@ -29,26 +28,11 @@ export class CarsRepository {
     return { success: true };
   }
 
-  async updateCar(
-    lotId: string,
-    updateCarDto: UpdateCarDto,
-  ): Promise<IPositiveRequest> {
-    const { car_cost, sale_status } = updateCarDto;
-    const searchCar = await this.carEntity.findOne({
-      where: { lot_id: lotId },
-    });
+  async updateCars(сreateCarDto: CreateCarDto[]): Promise<IPositiveRequest> {
+    const saveCar = await this.carEntity.save(сreateCarDto);
 
-    if (!searchCar) throw new NotFoundException('Car not found');
-    searchCar.sale_status = sale_status;
-
-    if (car_cost) {
-      searchCar.car_cost = car_cost;
-    }
-
-    const updateCar = await this.carEntity.save(searchCar);
-
-    if (!updateCar) {
-      throw new BadRequestException('Couldn`t update car');
+    if (!saveCar) {
+      throw new BadRequestException('Couldn`t save cars');
     }
 
     return { success: true };

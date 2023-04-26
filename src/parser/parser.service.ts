@@ -1,16 +1,14 @@
-// @ts-nocheck
 import puppeteer, { Browser, Page } from 'puppeteer';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { parseCsv } from './utils/csv.parser';
 import { CarsRepository } from 'src/cars/cars.repository';
-import { IPositiveRequest } from 'src/core/types/main';
-import { COPART_SELECTORS } from 'src/core/constants/selector';
 import { sleep } from './utils/sleep.util';
-import { UpdateCarDto } from 'src/cars/dto/update-car.dto';
-import { rejects } from 'assert';
+import { COPART_SELECTORS } from 'src/utils/constants/selector';
+import { IPayloadBody, IPositiveRequest } from 'src/utils/types';
+import { payloadBody } from 'src/utils/constants/main';
 
 @Injectable()
 export class ParserService {
@@ -108,7 +106,7 @@ export class ParserService {
     }
   }
 
-  async watchlist() {
+  async watchlist(): Promise<IPositiveRequest> {
     const addwatchlistUrl = process.env.PATH_ADD_TO_WATCHLIST;
     const loginCopart = process.env.COPART_LOGIN;
     const copartCatalog = process.env.COPART_CATALOG;
@@ -127,19 +125,8 @@ export class ParserService {
     const token = await this.getToken(page);
 
     await this.addCarsToWatchList(addwatchlistUrl, token, page);
-    await sleep(50000000);
-
     await browser.close();
-  }
-
-  async writeScriptDetails(page: number, lot_url: string) {
-    const pathToSaveParserStatus = process.env.PATH_TO_SAVE_PARSER_STATUS;
-    const content = `Page: ${page}\nLot url: ${lot_url}`;
-    fs.writeFile(pathToSaveParserStatus, content, { flag: 'w+' }, (err) => {
-      if (err) {
-        console.error(err);
-      }
-    });
+    return { success: true };
   }
 
   async addCarsToWatchList(url: string, token: string, page: Page) {
@@ -178,84 +165,134 @@ export class ParserService {
   }
 
   async updateLotFinalBid() {
+    const loginCopart = process.env.COPART_LOGIN;
+    const getWatchlist = process.env.GET_WATCHLIST;
+    const watchlist = process.env.PATH_TO_WATCHLIST;
     const browser = await this.makeFakeAgent();
     const page = await browser.newPage();
-    const loginCopart = process.env.COPART_LOGIN;
-    const getLotDetails = process.env.GET_LOT_DETAILS;
-    const watchlist = process.env.PATH_TO_WATCHLIST;
 
     await page.goto(loginCopart, { waitUntil: 'domcontentloaded' });
-
     await this.goToLoginPage(page);
-
     await page.goto(watchlist, {
       waitUntil: 'domcontentloaded',
     });
 
     const token = await this.getToken(page);
 
-    const searchCars = await this.carRepository.getAll();
+    const totalCars = await this.getTotalCars(
+      getWatchlist,
+      token,
+      page,
+      payloadBody,
+    );
+    const pages = Math.ceil(totalCars / 2000);
+    const promises = Array.from({ length: pages }, (_, i) => 0 + i).map(
+      (num) => {
+        return this.saveFromWatchList(getWatchlist, token, page, {
+          ...payloadBody,
+          page: num,
+        });
+      },
+    );
 
-    for (const car of searchCars) {
-      const lotUrl = getLotDetails + car.lot_id;
-      await this.getFinalBid(lotUrl, token, page);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      await Promise.all(promises);
+    } catch (err) {
+      throw new BadRequestException(err);
     }
-    await sleep(50000000);
+    await browser.close();
+
+    return { success: true };
   }
 
-  async getFinalBid(url: string, token: string, page: Page) {
-    const updateCar = new UpdateCarDto();
-
+  async getTotalCars(
+    url: string,
+    token: string,
+    page: Page,
+    payloadBody: IPayloadBody,
+  ) {
     const carObject = await page.evaluate(
-      async (url, token) => {
-        return await new Promise((resolve) => {
+      async (url, token, body) => {
+        return new Promise((resolve) => {
           let xhr = new XMLHttpRequest();
-          xhr.open('GET', url);
+          xhr.open('POST', url);
           xhr.setRequestHeader(
             'Content-type',
             'application/json; charset=utf-8',
           );
           xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
           xhr.setRequestHeader('x-xsrf-token', token);
-          xhr.send();
+          xhr.send(JSON.stringify(body));
           xhr.onload = () => {
             resolve(xhr.responseText);
-          };
-          xhr.onerror = () => {
-            reject(xhr.responseText);
           };
         });
       },
       url,
       token,
+      payloadBody,
     );
 
-    const { data } = JSON.parse(carObject);
-    const newSaleStatus = data.lotDetails.dynamicLotDetails.saleStatus;
-    const finalBid: number = data.lotDetails.dynamicLotDetails.currentBid;
-    const lotNumber: string = data.lotDetails.lotNumberStr;
-
-    updateCar.sale_status = newSaleStatus;
-    if (finalBid && newSaleStatus === 'ON_APPROVAL') {
-      updateCar.car_cost = finalBid;
-    }
-
-    console.log(
-      'finalBid:',
-      finalBid,
-      '  lotNumber:',
-      lotNumber,
-      'saleStatus: ',
-      newSaleStatus,
-    );
-
-    await this.carRepository.updateCar(lotNumber, updateCar);
+    const { data } = JSON.parse(carObject as string);
+    const totalCars = data.results.totalElements;
+    return totalCars;
   }
 
-  async waitUntilDownload(page, fileName = '') {
+  async saveFromWatchList(
+    url: string,
+    token: string,
+    page: Page,
+    payloadBody: IPayloadBody,
+  ) {
+    const carObject = await page.evaluate(
+      async (url: string, token: string, payloadBody: IPayloadBody) => {
+        return new Promise((resolve) => {
+          let xhr = new XMLHttpRequest();
+          xhr.open('POST', url);
+          xhr.setRequestHeader(
+            'Content-type',
+            'application/json; charset=utf-8',
+          );
+          xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
+          xhr.setRequestHeader('x-xsrf-token', token);
+          xhr.send(JSON.stringify(payloadBody));
+          xhr.onload = () => {
+            resolve(xhr.responseText);
+          };
+        });
+      },
+      url,
+      token,
+      payloadBody,
+    );
+
+    const { data } = JSON.parse(carObject as string);
+    const lots = data.results.content;
+
+    const updateLots = lots.map(({ dynamicLotDetails, lotNumberStr }) => {
+      if (
+        dynamicLotDetails.currentBid &&
+        dynamicLotDetails.saleStatus === 'ON_APPROVAL'
+      ) {
+        return {
+          lot_id: lotNumberStr,
+          car_cost: dynamicLotDetails.currentBid,
+          sale_status: dynamicLotDetails.saleStatus,
+        };
+      } else {
+        return {
+          lot_id: lotNumberStr,
+          sale_status: dynamicLotDetails.saleStatus,
+        };
+      }
+    });
+
+    await this.carRepository.updateCars(updateLots);
+  }
+
+  async waitUntilDownload(page: any, fileName: string) {
     return new Promise((resolve, reject) => {
-      page._client().on('Page.downloadProgress', (e) => {
+      page._client().on('Page.downloadProgress', (e: { state: string }) => {
         if (e.state === 'completed') {
           resolve(fileName);
         } else if (e.state === 'canceled') {
