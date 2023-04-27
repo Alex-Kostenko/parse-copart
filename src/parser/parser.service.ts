@@ -133,22 +133,27 @@ export class ParserService {
     const searchCars = await this.carRepository.getAll();
 
     for (const car of searchCars) {
-      await page.evaluate(
-        async (url, responseText) => {
-          await fetch(url, {
-            method: 'POST',
-            body: '{}',
-            headers: {
-              'x-requested-with': 'XMLHttpRequest',
-              'x-xsrf-token': responseText,
-            },
-          });
-        },
-        url + car.lot_id,
-        token,
-      );
+      try {
+        await page.evaluate(
+          async (url, responseText) => {
+            await fetch(url, {
+              method: 'POST',
+              body: '{}',
+              headers: {
+                'x-requested-with': 'XMLHttpRequest',
+                'x-xsrf-token': responseText,
+              },
+            });
+          },
+          url + car.lot_id,
+          token,
+        );
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch {
+        console.log(car.lot_id, ' ERROR');
+        continue;
+      }
     }
   }
 
@@ -269,14 +274,14 @@ export class ParserService {
     const { data } = JSON.parse(carObject as string);
     const lots = data.results.content;
 
-    const updateLots = lots.map(({ dynamicLotDetails, lotNumberStr }) => {
-      if (
-        dynamicLotDetails.currentBid &&
-        dynamicLotDetails.saleStatus === 'ON_APPROVAL'
-      ) {
+    const updateLots = lots.map(({ dynamicLotDetails, lotNumberStr, hb }) => {
+      if (lotNumberStr === '47884223')
+        console.log(hb, dynamicLotDetails.saleStatus);
+
+      if (hb) {
         return {
           lot_id: lotNumberStr,
-          car_cost: dynamicLotDetails.currentBid,
+          car_cost: hb,
           sale_status: dynamicLotDetails.saleStatus,
         };
       } else {

@@ -6,18 +6,19 @@ import { ParserService } from './parser.service';
 @Controller('parser')
 export class ParserController {
   constructor(private readonly parserService: ParserService) {}
-  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  @Cron(CronExpression.EVERY_DAY_AT_11AM)
   @Get('csvs')
   parseCSV(): Promise<IPositiveRequest> {
     return this.parserService.parseCSVs();
   }
 
+  @Cron(CronExpression.EVERY_DAY_AT_1PM)
   @Get('add-to-watchlist')
   addToWatchlist() {
     return this.parserService.watchlist();
   }
 
-  @Cron(CronExpression.EVERY_30_MINUTES_BETWEEN_10AM_AND_7PM)
+  @Cron('0 */32 16-23 * * 1-5')
   @Get('update-final-bid')
   updateFinalBid(): Promise<IPositiveRequest> {
     return this.parserService.updateLotFinalBid();
