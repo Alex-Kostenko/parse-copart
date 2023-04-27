@@ -1,14 +1,14 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
 import { BadRequestException, Injectable } from '@nestjs/common';
+import puppeteer, { Browser, Page } from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { parseCsv } from './utils/csv.parser';
-import { CarsRepository } from 'src/cars/cars.repository';
 import { sleep } from './utils/sleep.util';
+import { CarsRepository } from 'src/cars/cars.repository';
 import { COPART_SELECTORS } from 'src/utils/constants/selector';
-import { IPayloadBody, IPositiveRequest } from 'src/utils/types';
-import { payloadBody } from 'src/utils/constants/main';
+import { IPositiveRequest } from 'src/utils/types';
+import { pageSize } from 'src/utils/constants/main';
 
 @Injectable()
 export class ParserService {
@@ -106,67 +106,15 @@ export class ParserService {
     }
   }
 
-  async watchlist(): Promise<IPositiveRequest> {
-    const addwatchlistUrl = process.env.PATH_ADD_TO_WATCHLIST;
-    const loginCopart = process.env.COPART_LOGIN;
-    const copartCatalog = process.env.COPART_CATALOG;
-
-    const browser = await this.makeFakeAgent();
-    const page = await browser.newPage();
-    await page.setBypassCSP(true);
-    await page.goto(loginCopart, { waitUntil: 'domcontentloaded' });
-
-    await this.goToLoginPage(page);
-
-    await page.goto(copartCatalog, {
-      waitUntil: 'domcontentloaded',
-    });
-
-    const token = await this.getToken(page);
-
-    await this.addCarsToWatchList(addwatchlistUrl, token, page);
-    await browser.close();
-    return { success: true };
-  }
-
-  async addCarsToWatchList(url: string, token: string, page: Page) {
-    const searchCars = await this.carRepository.getAll();
-
-    for (const car of searchCars) {
-      try {
-        await page.evaluate(
-          async (url, responseText) => {
-            await fetch(url, {
-              method: 'POST',
-              body: '{}',
-              headers: {
-                'x-requested-with': 'XMLHttpRequest',
-                'x-xsrf-token': responseText,
-              },
-            });
-          },
-          url + car.lot_id,
-          token,
-        );
-
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      } catch {
-        console.log(car.lot_id, ' ERROR');
-        continue;
-      }
-    }
-  }
-
   async getToken(page: Page) {
-    const token = await page.$$eval('script', (nodes) => {
-      const el = nodes.find((n) => n.text.includes('csrfToken'));
-      const index = el.text.lastIndexOf('csrfToken') + 'csrfToken'.length;
-
-      const token = el.text.substring(index + 3, index + 39);
-
-      return token;
+    const { token } = COPART_SELECTORS;
+    const serchToken = await page.$$eval('script', (nodes) => {
+      const el = nodes.find((n) => n.text.includes(token));
+      const index = el.text.lastIndexOf(token) + token.length;
+      const serchToken = el.text.substring(index + 3, index + 39);
+      return serchToken;
     });
-    return token;
+    return serchToken;
   }
 
   async updateLotFinalBid() {
@@ -183,12 +131,9 @@ export class ParserService {
     });
 
     const token = await this.getToken(page);
+    const totalLots = await this.carRepository.getLotsNumber();
 
-    const totalCars = await this.carRepository.getLotsNumber();
-
-    const pages = Math.ceil(totalCars / 100);
-    console.log('pages', pages);
-
+    const pages = Math.ceil(totalLots / pageSize);
     const promises = Array.from({ length: pages }, (_, i) => 0 + i).map(
       (pageNumber) => {
         return this.saveFromBidDetails(getBidDetails, token, page, pageNumber);
@@ -244,13 +189,13 @@ export class ParserService {
     const updateLots = data.map(({ bidStatus, lotNumber, currentBid }) => {
       if (currentBid) {
         return {
-          lot_id: lotNumber,
+          lot_id: String(lotNumber),
           car_cost: currentBid,
           sale_status: bidStatus,
         };
       } else {
         return {
-          lot_id: lotNumber,
+          lot_id: String(lotNumber),
           sale_status: bidStatus,
         };
       }

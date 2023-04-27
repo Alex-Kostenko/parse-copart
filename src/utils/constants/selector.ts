@@ -47,4 +47,5 @@ export const COPART_SELECTORS = {
     loadExtension: `--load-extension=./autoHelperBot`,
     disableExtension: `--disable-extensions-except=./autoHelperBot`,
   },
+  token: 'csrfToken',
 };

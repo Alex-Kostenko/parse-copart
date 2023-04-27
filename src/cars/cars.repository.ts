@@ -4,10 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IPositiveRequest } from 'src/utils/types';
 import { Repository } from 'typeorm';
+
+import { pageSize } from 'src/utils/constants/main';
+import { IPositiveRequest } from 'src/utils/types';
 import { CreateCarDto } from './dto/create-car.dto';
+import { UpdateCarDto } from './dto/update-car.dto';
 import { CarEntity } from './entities/car.entity';
+
 @Injectable()
 export class CarsRepository {
   constructor(
@@ -26,30 +30,14 @@ export class CarsRepository {
     return { success: true };
   }
 
-  async updateCars(createCarDto: CreateCarDto[]): Promise<IPositiveRequest> {
-    const saveCar = await this.carEntity.save(createCarDto);
+  async updateCars(updateCarDto: UpdateCarDto[]): Promise<IPositiveRequest> {
+    const saveCar = await this.carEntity.save(updateCarDto);
 
     if (!saveCar) {
       throw new BadRequestException('Couldn`t save cars');
     }
 
     return { success: true };
-  }
-
-  async getAll(): Promise<CarEntity[]> {
-    const currentDate = new Date();
-
-    const carEntities = await this.carEntity
-      .createQueryBuilder('cars')
-      .select('cars.lot_id')
-      .where('DATE(cars.created_at) = DATE(:created_at)', {
-        created_at: currentDate,
-      })
-      .getRawMany();
-
-    if (!carEntities) throw new NotFoundException('Cars are not found');
-
-    return carEntities;
   }
 
   async getLotArray(pageNumber: number): Promise<string[]> {
@@ -61,8 +49,8 @@ export class CarsRepository {
       .where('DATE(cars.created_at) = DATE(:created_at)', {
         created_at: currentDate,
       })
-      .take(100)
-      .skip(100 * pageNumber)
+      .take(pageSize)
+      .skip(pageSize * pageNumber)
       .getMany();
 
     if (!carEntities) throw new NotFoundException('Cars are not found');

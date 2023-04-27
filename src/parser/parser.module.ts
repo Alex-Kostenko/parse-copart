@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
+
 import { ParserService } from './parser.service';
 import { ParserController } from './parser.controller';
 import { CarsModule } from 'src/cars/cars.module';
-import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [CarsModule, HttpModule],
