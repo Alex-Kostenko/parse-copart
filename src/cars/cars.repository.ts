@@ -6,10 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { IPositiveRequest } from 'src/utils/types';
 import { Repository } from 'typeorm';
-
 import { CreateCarDto } from './dto/create-car.dto';
 import { CarEntity } from './entities/car.entity';
-
 @Injectable()
 export class CarsRepository {
   constructor(
@@ -28,8 +26,8 @@ export class CarsRepository {
     return { success: true };
   }
 
-  async updateCars(сreateCarDto: CreateCarDto[]): Promise<IPositiveRequest> {
-    const saveCar = await this.carEntity.save(сreateCarDto);
+  async updateCars(createCarDto: CreateCarDto[]): Promise<IPositiveRequest> {
+    const saveCar = await this.carEntity.save(createCarDto);
 
     if (!saveCar) {
       throw new BadRequestException('Couldn`t save cars');
@@ -38,7 +36,7 @@ export class CarsRepository {
     return { success: true };
   }
 
-  async getAll() {
+  async getAll(): Promise<CarEntity[]> {
     const currentDate = new Date();
 
     const carEntities = await this.carEntity
@@ -47,10 +45,44 @@ export class CarsRepository {
       .where('DATE(cars.created_at) = DATE(:created_at)', {
         created_at: currentDate,
       })
-      .getMany();
+      .getRawMany();
 
     if (!carEntities) throw new NotFoundException('Cars are not found');
 
     return carEntities;
+  }
+
+  async getLotArray(pageNumber: number): Promise<string[]> {
+    const currentDate = new Date();
+
+    const carEntities = await this.carEntity
+      .createQueryBuilder('cars')
+      .select('cars.lot_id')
+      .where('DATE(cars.created_at) = DATE(:created_at)', {
+        created_at: currentDate,
+      })
+      .take(100)
+      .skip(100 * pageNumber)
+      .getMany();
+
+    if (!carEntities) throw new NotFoundException('Cars are not found');
+    const lotIds = carEntities.map((car) => car.lot_id);
+    return lotIds;
+  }
+
+  async getLotsNumber(): Promise<number> {
+    const currentDate = new Date();
+
+    const lotCount = await this.carEntity
+      .createQueryBuilder('cars')
+      .select('cars.lot_id')
+      .where('DATE(cars.created_at) = DATE(:created_at)', {
+        created_at: currentDate,
+      })
+      .getCount();
+
+    if (!lotCount) throw new NotFoundException('Cars are not found');
+
+    return lotCount;
   }
 }

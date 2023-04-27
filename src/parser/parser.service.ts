@@ -171,7 +171,7 @@ export class ParserService {
 
   async updateLotFinalBid() {
     const loginCopart = process.env.COPART_LOGIN;
-    const getWatchlist = process.env.GET_WATCHLIST;
+    const getBidDetails = process.env.GET_BID_DETAILS;
     const watchlist = process.env.PATH_TO_WATCHLIST;
     const browser = await this.makeFakeAgent();
     const page = await browser.newPage();
@@ -184,19 +184,14 @@ export class ParserService {
 
     const token = await this.getToken(page);
 
-    const totalCars = await this.getTotalCars(
-      getWatchlist,
-      token,
-      page,
-      payloadBody,
-    );
-    const pages = Math.ceil(totalCars / 2000);
+    const totalCars = await this.carRepository.getLotsNumber();
+
+    const pages = Math.ceil(totalCars / 100);
+    console.log('pages', pages);
+
     const promises = Array.from({ length: pages }, (_, i) => 0 + i).map(
-      (num) => {
-        return this.saveFromWatchList(getWatchlist, token, page, {
-          ...payloadBody,
-          page: num,
-        });
+      (pageNumber) => {
+        return this.saveFromBidDetails(getBidDetails, token, page, pageNumber);
       },
     );
 
@@ -210,14 +205,20 @@ export class ParserService {
     return { success: true };
   }
 
-  async getTotalCars(
+  async saveFromBidDetails(
     url: string,
     token: string,
     page: Page,
-    payloadBody: IPayloadBody,
+    pageNumber: number,
   ) {
+    const searchLots = await this.carRepository.getLotArray(pageNumber);
+
+    const body = {
+      lots: searchLots,
+    };
+
     const carObject = await page.evaluate(
-      async (url, token, body) => {
+      async (url: string, token: string, body: any) => {
         return new Promise((resolve) => {
           let xhr = new XMLHttpRequest();
           xhr.open('POST', url);
@@ -235,59 +236,22 @@ export class ParserService {
       },
       url,
       token,
-      payloadBody,
+      body,
     );
 
     const { data } = JSON.parse(carObject as string);
-    const totalCars = data.results.totalElements;
-    return totalCars;
-  }
 
-  async saveFromWatchList(
-    url: string,
-    token: string,
-    page: Page,
-    payloadBody: IPayloadBody,
-  ) {
-    const carObject = await page.evaluate(
-      async (url: string, token: string, payloadBody: IPayloadBody) => {
-        return new Promise((resolve) => {
-          let xhr = new XMLHttpRequest();
-          xhr.open('POST', url);
-          xhr.setRequestHeader(
-            'Content-type',
-            'application/json; charset=utf-8',
-          );
-          xhr.setRequestHeader('x-requested-with', 'XMLHttpRequest');
-          xhr.setRequestHeader('x-xsrf-token', token);
-          xhr.send(JSON.stringify(payloadBody));
-          xhr.onload = () => {
-            resolve(xhr.responseText);
-          };
-        });
-      },
-      url,
-      token,
-      payloadBody,
-    );
-
-    const { data } = JSON.parse(carObject as string);
-    const lots = data.results.content;
-
-    const updateLots = lots.map(({ dynamicLotDetails, lotNumberStr, hb }) => {
-      if (lotNumberStr === '47884223')
-        console.log(hb, dynamicLotDetails.saleStatus);
-
-      if (hb) {
+    const updateLots = data.map(({ bidStatus, lotNumber, currentBid }) => {
+      if (currentBid) {
         return {
-          lot_id: lotNumberStr,
-          car_cost: hb,
-          sale_status: dynamicLotDetails.saleStatus,
+          lot_id: lotNumber,
+          car_cost: currentBid,
+          sale_status: bidStatus,
         };
       } else {
         return {
-          lot_id: lotNumberStr,
-          sale_status: dynamicLotDetails.saleStatus,
+          lot_id: lotNumber,
+          sale_status: bidStatus,
         };
       }
     });
