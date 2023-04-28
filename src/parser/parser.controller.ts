@@ -15,7 +15,7 @@ export class ParserController {
 
   @Cron('0 */32 16-23 * * 1-5')
   @Get('update-final-bid')
-  updateFinalBid(): Promise<IPositiveRequest> {
+  updateFinalBid(): Promise<void> {
     return this.parserService.updateLotFinalBid();
   }
 }
