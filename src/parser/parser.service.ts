@@ -10,9 +10,16 @@ import { CopartSelectors } from 'src/utils/constants/selector';
 import { IPositiveRequest } from 'src/utils/types';
 import { pageSize } from 'src/utils/constants/main';
 
+import { ModelsService } from 'src/models/models.service';
+import { MakesService } from 'src/makes/makes.service';
+
 @Injectable()
 export class ParserService {
-  constructor(private carRepository: CarsRepository) {}
+  constructor(
+    private carRepository: CarsRepository,
+    private modelsServise: ModelsService,
+    private makesServise: MakesService,
+  ) {}
 
   async makeFakeAgent(): Promise<Browser> {
     const { loadExtension, disableExtension } = CopartSelectors.autohelperbot;
@@ -67,6 +74,31 @@ export class ParserService {
 
     await parseCsv(directoryPath + '/' + salesData.fileName)
       .then(async (results) => {
+        // const uniqueModels = Array.from(
+        //   new Set(results.map((car) => JSON.stringify(car, ['make', 'model']))),
+        // ).map((json) => {
+        //   const uniqueModels = JSON.parse(json);
+        //   const newMake = new MakeEntity();
+        //   newMake.make = uniqueModels.make;
+        //   return { ...uniqueModels, model: newMake };
+        // });
+
+        //remove duplicates by make and model
+        const uniqueModels = Array.from(
+          new Set(results.map((car) => JSON.stringify(car, ['make', 'model']))),
+        ).map((json) => JSON.parse(json));
+
+        //remove duplicates by make
+        const uniqueMakes = Array.from(
+          new Set(results.map((car) => JSON.stringify(car, ['make']))),
+        ).map((json) => JSON.parse(json));
+
+        console.log(uniqueModels);
+
+        //TODO check why this func return error about primary key
+        await this.makesServise.createMakes(uniqueMakes);
+        await this.modelsServise.createModels(uniqueModels);
+
         await this.carRepository.saveAll(results);
       })
       .catch((error) => {

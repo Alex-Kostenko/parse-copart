@@ -6,6 +6,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { CarsModule } from './cars/cars.module';
 import { configService } from './config/config.service';
 import { ParserModule } from './parser/parser.module';
+import { MakesModule } from './makes/makes.module';
+import { ModelsModule } from './models/models.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { ParserModule } from './parser/parser.module';
     CarsModule,
     ParserModule,
     ScheduleModule.forRoot(),
+    MakesModule,
+    ModelsModule,
   ],
 })
 export class AppModule {}
